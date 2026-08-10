@@ -1,7 +1,7 @@
 locals {
-  vault_name = "${var.name}-bkp"
+  vault_name = "${var.name}-backup"
   role_name  = "${var.name}-backup"
-  sns_name   = "${var.name}-bkp"
+  sns_name   = "${var.name}-backup"
 
   # Group exclusion conditions by operator so each maps to its own dynamic block.
   string_equals     = [for c in var.backup_exclusion_conditions : c if c.operator == "string_equals"]
@@ -14,7 +14,7 @@ locals {
 #### VAULT ####
 ###############
 
-resource "aws_backup_vault" "bkp" {
+resource "aws_backup_vault" "backup" {
   name = local.vault_name
   #kms_key_arn = aws_kms_key.example.arn # use default kms key aws/backup
 
@@ -22,7 +22,7 @@ resource "aws_backup_vault" "bkp" {
 }
 
 resource "aws_backup_vault_lock_configuration" "locker" {
-  backup_vault_name  = aws_backup_vault.bkp.name
+  backup_vault_name  = aws_backup_vault.backup.name
   max_retention_days = var.vault_lock_max_retention_days
   min_retention_days = var.vault_lock_min_retention_days
 }
@@ -31,7 +31,7 @@ resource "aws_backup_vault_lock_configuration" "locker" {
 #### IAM ####
 #############
 
-data "aws_iam_policy_document" "bkp" {
+data "aws_iam_policy_document" "backup" {
   statement {
     effect = "Allow"
 
@@ -44,36 +44,36 @@ data "aws_iam_policy_document" "bkp" {
   }
 }
 
-resource "aws_iam_role" "bkp" {
+resource "aws_iam_role" "backup" {
   name               = local.role_name
-  assume_role_policy = data.aws_iam_policy_document.bkp.json
+  assume_role_policy = data.aws_iam_policy_document.backup.json
 
   tags = var.tags
 }
 
-resource "aws_iam_role_policy_attachment" "bkp" {
+resource "aws_iam_role_policy_attachment" "backup" {
   policy_arn = "arn:aws:iam::aws:policy/service-role/AWSBackupServiceRolePolicyForBackup"
-  role       = aws_iam_role.bkp.name
+  role       = aws_iam_role.backup.name
 }
 
-resource "aws_iam_role_policy_attachment" "bkp_s3" {
+resource "aws_iam_role_policy_attachment" "backup_s3" {
   count      = var.enable_s3_backup_policy ? 1 : 0
   policy_arn = "arn:aws:iam::aws:policy/AWSBackupServiceRolePolicyForS3Backup"
-  role       = aws_iam_role.bkp.name
+  role       = aws_iam_role.backup.name
 }
 
 ######################
 #### Backup Plans ####
 ######################
 
-resource "aws_backup_plan" "bkp" {
-  name = "${var.name}-bkp"
+resource "aws_backup_plan" "backup" {
+  name = "${var.name}-backup"
 
   dynamic "rule" {
     for_each = var.backup_rules
     content {
       rule_name                = rule.value.rule_name
-      target_vault_name        = aws_backup_vault.bkp.name
+      target_vault_name        = aws_backup_vault.backup.name
       schedule                 = rule.value.schedule
       start_window             = rule.value.start_window
       completion_window        = rule.value.completion_window
@@ -93,10 +93,10 @@ resource "aws_backup_plan" "bkp" {
 #### Backup Selections ####
 ###########################
 
-resource "aws_backup_selection" "bkp" {
-  iam_role_arn = aws_iam_role.bkp.arn
+resource "aws_backup_selection" "backup" {
+  iam_role_arn = aws_iam_role.backup.arn
   name         = "selection_AWS_Backup"
-  plan_id      = aws_backup_plan.bkp.id
+  plan_id      = aws_backup_plan.backup.id
 
   resources = var.selected_resources
 
@@ -140,13 +140,13 @@ resource "aws_backup_selection" "bkp" {
 ##################################
 # The SNS subscription must be confirmed by the recipient (check the inbox).
 
-resource "aws_sns_topic" "bkp" {
+resource "aws_sns_topic" "backup" {
   name = local.sns_name
 
   tags = var.tags
 }
 
-data "aws_iam_policy_document" "bkp_sns" {
+data "aws_iam_policy_document" "backup_sns" {
   policy_id = "__default_policy_ID"
   statement {
     actions = [
@@ -158,25 +158,25 @@ data "aws_iam_policy_document" "bkp_sns" {
       identifiers = ["backup.amazonaws.com"]
     }
     resources = [
-      aws_sns_topic.bkp.arn,
+      aws_sns_topic.backup.arn,
     ]
     sid = "__default_statement_ID"
   }
 }
 
-resource "aws_sns_topic_policy" "bkp" {
-  arn    = aws_sns_topic.bkp.arn
-  policy = data.aws_iam_policy_document.bkp_sns.json
+resource "aws_sns_topic_policy" "backup" {
+  arn    = aws_sns_topic.backup.arn
+  policy = data.aws_iam_policy_document.backup_sns.json
 }
 
-resource "aws_backup_vault_notifications" "bkp" {
-  backup_vault_name   = aws_backup_vault.bkp.name
-  sns_topic_arn       = aws_sns_topic.bkp.arn
+resource "aws_backup_vault_notifications" "backup" {
+  backup_vault_name   = aws_backup_vault.backup.name
+  sns_topic_arn       = aws_sns_topic.backup.arn
   backup_vault_events = var.backup_vault_events
 }
 
-resource "aws_sns_topic_subscription" "bkp_alerts" {
-  topic_arn = aws_sns_topic.bkp.arn
+resource "aws_sns_topic_subscription" "backup_alerts" {
+  topic_arn = aws_sns_topic.backup.arn
   protocol  = "email"
   endpoint  = var.email
 
