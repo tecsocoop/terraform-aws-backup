@@ -3,7 +3,7 @@
 ##########################
 
 variable "name" {
-  description = "Base name for the created resources, e.g. prd-tecso. Suffixes are appended (-bkp, -backup)."
+  description = "Base name for the created resources, e.g. prd-tecso. Suffixes are appended (-backup)."
   type        = string
 }
 
